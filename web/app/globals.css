@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f3ecdf;
+  --ink: #1c1915;
+  --card: #fffaf3;
+  --line: #ddcfc0;
+  --pine: #1b654e;
+  --ember: #d4531e;
+  --danger: #8d1f33;
+  --muted: #5c5348;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-card: var(--card);
+  --color-line: var(--line);
+  --color-pine: var(--pine);
+  --color-ember: var(--ember);
+  --color-danger: var(--danger);
+  --color-muted: var(--muted);
+  --font-sans: var(--font-outfit), sans-serif;
+  --font-display: var(--font-fraunces), serif;
+}
+
+body {
+  background:
+    radial-gradient(900px 420px at 0% -10%, #ffe4c2 0%, transparent 60%),
+    radial-gradient(700px 380px at 100% 0%, #d7efe6 0%, transparent 55%),
+    var(--paper);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--pine);
+  outline-offset: 3px;
+}

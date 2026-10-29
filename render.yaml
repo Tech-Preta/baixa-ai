@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: baixa-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: ./api
+    healthCheckPath: /healthz
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: CORS_ORIGINS
+        value: https://baixa.nataliagranato.xyz
+      - key: TRUST_PROXY
+        value: "true"
+      - key: DOWNLOAD_TOKEN_SECRET
+        generateValue: true
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: SENTRY_DSN
+        sync: false

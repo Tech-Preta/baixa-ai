@@ -1,0 +1,8 @@
+# Dependências diretas. O yt-dlp fica pinado de propósito: para atualizar,
+# troque a versão abaixo, rode os testes e suba de novo.
+#   pip index versions yt-dlp
+fastapi==0.162.0
+uvicorn==0.54.0
+yt-dlp==2026.10.26
+httpx==0.28.1
+sentry-sdk==2.73.0
