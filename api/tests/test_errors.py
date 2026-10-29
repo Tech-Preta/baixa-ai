@@ -1,6 +1,7 @@
 import yt_dlp
 
 from app.errors import (
+    MSG_BOT,
     MSG_GENERIC,
     MSG_PRIVATE,
     MSG_TIMEOUT,
@@ -16,6 +17,17 @@ def test_private_and_login_walls_get_a_clear_message() -> None:
     assert error.status_code == 422
     assert error.message == MSG_PRIVATE
     assert "Private video" not in error.message
+
+
+def test_youtube_bot_check_is_not_treated_as_a_private_video() -> None:
+    curly = yt_dlp.utils.DownloadError("ERROR: Sign in to confirm you’re not a bot")
+    straight = yt_dlp.utils.DownloadError("ERROR: Sign in to confirm you're not a bot")
+    for exc in (curly, straight):
+        error = classify_extractor_error(exc)
+        assert error.code == "upstream_blocked"
+        assert error.status_code == 503
+        assert error.message == MSG_BOT
+        assert "conta" in error.message
 
 
 def test_instagram_login_wall_is_private() -> None:

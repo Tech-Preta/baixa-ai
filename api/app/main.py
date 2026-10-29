@@ -20,6 +20,7 @@ from app.media import EXT_CONTENT_TYPES, ExtractedMedia, MediaItem, extract_medi
 from app.ratelimit import RateLimiter
 from app.streaming import open_remote
 from app.tokens import sign_token, verify_token
+from app.transcode import LocalMedia, prepare_local_media
 from app.urls import validate_media_url
 from app.ytdlp_runner import run_ytdlp
 
@@ -36,6 +37,7 @@ def create_app(
     runner: Callable[[str, float], dict] | None = None,
     client_factory: Callable[[float], httpx.AsyncClient] | None = None,
     resolve: Callable | None = None,
+    local_prepare: Callable[[MediaItem, str, float, int], LocalMedia] | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     _init_sentry(settings)
@@ -51,6 +53,7 @@ def create_app(
     app.state.runner = runner or run_ytdlp
     app.state.client_factory = client_factory or _default_client_factory
     app.state.resolve = resolve
+    app.state.local_prepare = local_prepare or prepare_local_media
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -114,7 +117,9 @@ def create_app(
         item = _find_item(media, payload.get("index"), str(payload.get("format_id", "")))
         if item is None:
             raise AppError("not_found", MSG_OPTION, 404)
-        filename = _filename(media.provider, item.index, item.ext)
+        filename = _filename(media.provider, item.index, item.ext, item.height)
+        if item.delivery != "direct":
+            return await _stream_local(request, item, media.page_url, filename)
         return await _proxy(
             request,
             item.url,
@@ -309,11 +314,58 @@ def _content_type(ext: str) -> str:
     return EXT_CONTENT_TYPES.get(ext.lower(), "application/octet-stream")
 
 
-def _filename(provider: str, index: int, ext: str) -> str:
+async def _stream_local(
+    request: Request,
+    item: MediaItem,
+    page_url: str,
+    filename: str,
+) -> StreamingResponse:
+    settings: Settings = request.app.state.settings
+    try:
+        local = await asyncio.wait_for(
+            asyncio.to_thread(
+                request.app.state.local_prepare,
+                item,
+                page_url,
+                settings.download_timeout_seconds,
+                settings.max_file_bytes,
+            ),
+            timeout=settings.download_timeout_seconds,
+        )
+    except TimeoutError as exc:
+        raise AppError("timeout", MSG_TIMEOUT, 504) from exc
+    size = local.path.stat().st_size
+
+    async def body() -> AsyncIterator[bytes]:
+        try:
+            with local.path.open("rb") as handle:
+                while True:
+                    chunk = await asyncio.to_thread(handle.read, 64 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+        finally:
+            local.cleanup()
+
+    return StreamingResponse(
+        body(),
+        media_type=_content_type(item.ext),
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(size),
+        },
+    )
+
+
+def _filename(provider: str, index: int, ext: str, height: int | None = None) -> str:
     safe_ext = "jpg" if ext.lower() == "jpeg" else ext.lower()
     if safe_ext not in EXT_CONTENT_TYPES and safe_ext != "jpg":
         safe_ext = "bin"
-    safe_provider = provider if provider in {"instagram", "tiktok", "x"} else "media"
+    safe_provider = provider if provider in {"instagram", "tiktok", "x", "youtube"} else "media"
+    if safe_ext == "mp3":
+        return f"baixa-{safe_provider}-{index + 1}.mp3"
+    if height and safe_ext == "mp4":
+        return f"baixa-{safe_provider}-{height}p.{safe_ext}"
     return f"baixa-{safe_provider}-{index + 1}.{safe_ext}"
 
 

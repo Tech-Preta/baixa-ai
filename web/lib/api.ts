@@ -1,6 +1,6 @@
 export type MediaItem = {
   index: number;
-  type: "video" | "image";
+  type: "video" | "image" | "audio";
   ext: string;
   label: string;
   filesize: number | null;
@@ -8,7 +8,7 @@ export type MediaItem = {
 };
 
 export type Extracted = {
-  provider: "instagram" | "tiktok" | "x";
+  provider: "instagram" | "tiktok" | "x" | "youtube";
   title: string | null;
   author: string | null;
   thumbnail_path: string | null;
@@ -19,6 +19,7 @@ const PROVIDER_LABEL: Record<Extracted["provider"], string> = {
   instagram: "Instagram",
   tiktok: "TikTok",
   x: "X",
+  youtube: "YouTube",
 };
 
 export function apiBase(): string {
@@ -38,6 +39,9 @@ export function providerLabel(provider: Extracted["provider"]): string {
 }
 
 export function downloadLabel(label: string): string {
+  if (label === "MP3" || label.startsWith("MP3 ")) {
+    return `Baixar ${label}`;
+  }
   const lower = label.charAt(0).toLocaleLowerCase("pt-BR") + label.slice(1);
   return `Baixar ${lower}`;
 }

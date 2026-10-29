@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.errors import MSG_GENERIC, MSG_PRIVATE, MSG_RATE, MSG_UNSUPPORTED
 from app.main import create_app
+from app.transcode import LocalMedia
 
 IG = "https://www.instagram.com/reel/AbC123/"
 ORIGIN = "https://baixa.nataliagranato.xyz"
@@ -58,7 +59,7 @@ def calls() -> dict:
     return {"n": 0}
 
 
-def _app(runner, calls: dict, **setting_overrides: object):
+def _app(runner, calls: dict, local_prepare=None, **setting_overrides: object):
     def wrapped(url: str, timeout: float) -> dict:
         calls["n"] += 1
         result = runner(url, timeout)
@@ -82,6 +83,7 @@ def _app(runner, calls: dict, **setting_overrides: object):
         client_factory=factory,
         resolve=_public_resolve,
         time_fn=lambda: 1_700_000_000,
+        local_prepare=local_prepare,
     )
 
 
@@ -100,7 +102,7 @@ def test_healthz_is_open_and_does_not_spend_rate_limit(calls: dict) -> None:
 
 def test_rejects_foreign_hosts_without_calling_the_extractor(calls: dict) -> None:
     client = TestClient(_app(lambda url, timeout: _info(), calls))
-    response = client.post("/api/extract", json={"url": "https://youtube.com/watch?v=abc"})
+    response = client.post("/api/extract", json={"url": "https://vimeo.com/123456"})
     assert response.status_code == 400
     assert response.json()["error"] == "unsupported_host"
     assert calls["n"] == 0
@@ -158,7 +160,7 @@ def test_extract_returns_download_options_without_leaking_cdn_urls(calls: dict) 
     assert downloaded.headers["content-type"].startswith("video/mp4")
     disposition = downloaded.headers["content-disposition"]
     assert disposition.startswith("attachment;")
-    assert "baixa-instagram-1.mp4" in disposition
+    assert "baixa-instagram-720p.mp4" in disposition
 
     thumb = client.get(body["thumbnail_path"])
     assert thumb.status_code == 200
@@ -208,6 +210,94 @@ def test_cors_is_limited_to_configured_origins(calls: dict) -> None:
         headers={"Origin": "https://evil.test"},
     )
     assert "access-control-allow-origin" not in denied.headers
+
+
+def test_youtube_single_video_offers_merged_quality_and_mp3(calls: dict) -> None:
+    def info(url: str, timeout: float) -> dict:
+        return {
+            "title": "Um vídeo",
+            "uploader": "canal",
+            "duration": 2,
+            "formats": [
+                {
+                    "format_id": "18",
+                    "ext": "mp4",
+                    "protocol": "https",
+                    "vcodec": "avc1",
+                    "acodec": "mp4a",
+                    "height": 360,
+                    "filesize": 500,
+                    "url": "https://cdn.example/360.mp4",
+                    "http_headers": {"User-Agent": "Baixa"},
+                },
+                {
+                    "format_id": "137",
+                    "ext": "mp4",
+                    "protocol": "https",
+                    "vcodec": "avc1.640028",
+                    "acodec": "none",
+                    "height": 1080,
+                    "filesize": 4_000,
+                    "url": "https://cdn.example/1080.mp4",
+                },
+                {
+                    "format_id": "140",
+                    "ext": "m4a",
+                    "protocol": "https",
+                    "vcodec": "none",
+                    "acodec": "mp4a.40.2",
+                    "abr": 128,
+                    "filesize": 200,
+                    "url": "https://cdn.example/audio.m4a",
+                },
+            ],
+        }
+
+    client = TestClient(_app(info, calls))
+    response = client.post(
+        "/api/extract",
+        json={"url": "https://www.youtube.com/watch?v=abcdefghijk"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider"] == "youtube"
+    labels = [item["label"] for item in body["items"]]
+    assert labels == ["Vídeo · 1080p", "Vídeo · 360p", "MP3"]
+    assert "cdn.example" not in response.text
+    assert calls["n"] == 1
+
+
+def test_youtube_bot_check_is_explained_in_portuguese(calls: dict) -> None:
+    def runner(url: str, timeout: float) -> dict:
+        raise yt_dlp.utils.DownloadError("ERROR: Sign in to confirm you're not a bot")
+
+    client = TestClient(_app(runner, calls))
+    response = client.post(
+        "/api/extract",
+        json={"url": "https://youtu.be/abcdefghijk"},
+    )
+    assert response.status_code == 503
+    assert response.json()["error"] == "upstream_blocked"
+    assert "Render" in response.json()["message"]
+    assert "bot" not in response.json()["message"].lower()
+
+
+def test_mp3_download_streams_the_converted_file(calls: dict, tmp_path) -> None:
+    def local_prepare(item, page_url: str, timeout: float, max_bytes: int) -> LocalMedia:
+        assert item.delivery == "mp3"
+        assert item.audio_format_id == "hd"
+        path = tmp_path / "out.mp3"
+        path.write_bytes(b"mp3bytes")
+        return LocalMedia(path=path, cleanup=lambda: path.unlink(missing_ok=True))
+
+    client = TestClient(_app(lambda url, timeout: _info(), calls, local_prepare=local_prepare))
+    extracted = client.post("/api/extract", json={"url": IG})
+    mp3 = next(item for item in extracted.json()["items"] if item["label"] == "MP3")
+    downloaded = client.get(mp3["download_path"])
+    assert downloaded.status_code == 200
+    assert downloaded.content == b"mp3bytes"
+    assert downloaded.headers["content-type"].startswith("audio/mpeg")
+    assert "baixa-instagram-1.mp3" in downloaded.headers["content-disposition"]
 
 
 def test_invalid_download_token(calls: dict) -> None:

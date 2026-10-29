@@ -20,6 +20,14 @@ VALID = [
     ("https://mobile.twitter.com/maria/status/1234567890", "x"),
     ("https://x.com/i/status/1234567890", "x"),
     ("https://x.com/maria/status/1234567890/video/1", "x"),
+    ("https://www.youtube.com/watch?v=abcdefghijk", "youtube"),
+    ("https://youtube.com/watch?v=abcdefghijk", "youtube"),
+    ("https://m.youtube.com/watch?v=abcdefghijk", "youtube"),
+    ("https://music.youtube.com/watch?v=abcdefghijk", "youtube"),
+    ("https://youtu.be/abcdefghijk", "youtube"),
+    ("https://www.youtube.com/shorts/abcdefghijk", "youtube"),
+    ("https://m.youtube.com/shorts/abcdefghijk/", "youtube"),
+    ("https://www.youtube.com/embed/abcdefghijk", "youtube"),
 ]
 
 
@@ -58,7 +66,7 @@ def test_rejects_malformed_urls(url: str) -> None:
 @pytest.mark.parametrize(
     "url",
     [
-        "https://youtube.com/watch?v=abc",
+        "https://vimeo.com/123456",
         "https://instagram.com.evil.com/p/AbC123/",
         "https://evilinstagram.com/p/AbC123/",
         "https://notinstagram.com/p/AbC123/",
@@ -89,6 +97,36 @@ def test_rejects_profiles_and_story_trays(url: str) -> None:
         validate_media_url(url)
     assert exc.value.code == "unsupported_content"
     assert exc.value.message == MSG_UNSUPPORTED
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.youtube.com/playlist?list=PLabcdefghij",
+        "https://www.youtube.com/watch?v=abcdefghijk&list=PLabcdefghij",
+        "https://www.youtube.com/live/abcdefghijk",
+        "https://www.youtube.com/@canal",
+        "https://www.youtube.com/feed/trending",
+        "https://www.youtube.com/watch?v=abc",
+        "https://youtu.be/short",
+        "https://youtu.be/",
+        "https://www.youtube.com/",
+    ],
+)
+def test_rejects_youtube_playlists_lives_and_channels(url: str) -> None:
+    with pytest.raises(AppError) as exc:
+        validate_media_url(url)
+    assert exc.value.code == "unsupported_content"
+    assert exc.value.message == MSG_UNSUPPORTED
+
+
+def test_normalizes_a_youtube_watch_url_and_keeps_the_id_case() -> None:
+    parsed = validate_media_url("https://m.youtube.com/watch?feature=share&v=AbCdefghijk#t=12")
+    assert parsed.provider == "youtube"
+    assert parsed.url == "https://m.youtube.com/watch?v=AbCdefghijk"
+
+    short = validate_media_url("https://youtu.be/AbCdefghijk?si=tracking")
+    assert short.url == "https://youtu.be/AbCdefghijk"
 
 
 def test_preserves_case_sensitive_path_and_drops_fragment() -> None:

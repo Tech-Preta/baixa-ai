@@ -1,10 +1,20 @@
 """Error types and user-facing messages (pt-BR)."""
 
 MSG_INVALID = "Esse endereço não parece um link válido."
-MSG_HOST = "Por enquanto só aceitamos links do Instagram, TikTok e X (Twitter)."
+MSG_HOST = "Por enquanto só aceitamos links do Instagram, TikTok, X (Twitter) e YouTube."
 MSG_UNSUPPORTED = (
     "Esse link não é compatível. Use um post, Reel ou Story público do Instagram, "
-    "um vídeo do TikTok ou um post com mídia do X."
+    "um vídeo do TikTok, um post com mídia do X ou um vídeo único do YouTube "
+    "(não vale playlist nem live)."
+)
+MSG_LIVE = (
+    "Transmissões ao vivo não são suportadas. Quando o vídeo terminar e ficar "
+    "disponível, tente o link de novo."
+)
+MSG_BOT = (
+    "O YouTube bloqueou a consulta deste servidor e pediu para confirmar que não "
+    "somos um robô. Isso é comum em IPs de datacenter, como os do Render. Tente de "
+    "novo mais tarde. O Baixa.ai não usa a sua conta para contornar esse bloqueio."
 )
 MSG_PRIVATE = (
     "Esse conteúdo é privado ou exige login. O Baixa.ai só baixa mídia pública, "
@@ -18,6 +28,12 @@ MSG_GENERIC = "Não foi possível obter a mídia agora. Tente de novo em instant
 MSG_TOKEN = "Esse download expirou ou é inválido. Busque o link de novo."
 MSG_OPTION = "Essa opção expirou. Busque o link de novo."
 
+_BOT_MARKERS = (
+    "sign in to confirm",
+    "not a bot",
+    "confirm you're not a bot",
+    "confirm you’re not a bot",
+)
 _PRIVATE_MARKERS = (
     "private",
     "login",
@@ -65,6 +81,8 @@ def classify_extractor_error(exc: BaseException) -> AppError:
     if isinstance(exc, TimeoutError):
         return AppError("timeout", MSG_TIMEOUT, 504)
     text = f"{type(exc).__name__} {exc}".lower()
+    if any(marker in text for marker in _BOT_MARKERS):
+        return AppError("upstream_blocked", MSG_BOT, 503)
     if any(marker in text for marker in _PRIVATE_MARKERS):
         return AppError("private_content", MSG_PRIVATE, 422)
     if any(marker in text for marker in _NOT_FOUND_MARKERS):

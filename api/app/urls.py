@@ -3,16 +3,20 @@
 import ipaddress
 import re
 from dataclasses import dataclass
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from app.errors import MSG_HOST, MSG_INVALID, MSG_UNSUPPORTED, AppError
 
 _PROVIDERS = (
+    ("youtube.com", "youtube"),
+    ("youtu.be", "youtube"),
     ("instagram.com", "instagram"),
     ("tiktok.com", "tiktok"),
     ("x.com", "x"),
     ("twitter.com", "x"),
 )
+_YOUTUBE_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+_YOUTUBE_MEDIA_PATH = re.compile(r"^/(?:shorts|embed|v)/([A-Za-z0-9_-]{11})/?$", re.IGNORECASE)
 
 _SHORT_TIKTOK_HOSTS = {"vm.tiktok.com", "vt.tiktok.com"}
 
@@ -63,6 +67,9 @@ def validate_media_url(raw: str) -> ParsedMediaUrl:
     provider = _provider_for(host)
     if provider is None:
         raise AppError("unsupported_host", MSG_HOST, 400)
+    if provider == "youtube":
+        normalized = _normalize_youtube(host, parts.path or "/", parts.query)
+        return ParsedMediaUrl(url=normalized, provider=provider, host=host)
     if not _path_allowed(provider, host, parts.path or "/"):
         raise AppError("unsupported_content", MSG_UNSUPPORTED, 422)
 
@@ -75,6 +82,33 @@ def _provider_for(host: str) -> str | None:
         if host == domain or host.endswith("." + domain):
             return provider
     return None
+
+
+def _normalize_youtube(host: str, path: str, query: str) -> str:
+    params = parse_qs(query, keep_blank_values=False)
+    if "list" in params:
+        raise AppError("unsupported_content", MSG_UNSUPPORTED, 422)
+    lowered = path.lower()
+    if lowered.startswith("/live") or lowered.startswith("/playlist"):
+        raise AppError("unsupported_content", MSG_UNSUPPORTED, 422)
+
+    if host == "youtu.be" or host.endswith(".youtu.be"):
+        match = re.fullmatch(r"/([A-Za-z0-9_-]{11})/?", path)
+        if match is None:
+            raise AppError("unsupported_content", MSG_UNSUPPORTED, 422)
+        return f"https://{host}/{match.group(1)}"
+
+    if lowered in {"/watch", "/watch/"}:
+        video_id = (params.get("v") or [""])[0]
+        if _YOUTUBE_ID.fullmatch(video_id) is None:
+            raise AppError("unsupported_content", MSG_UNSUPPORTED, 422)
+        return f"https://{host}/watch?v={video_id}"
+
+    match = _YOUTUBE_MEDIA_PATH.fullmatch(path)
+    if match is None:
+        raise AppError("unsupported_content", MSG_UNSUPPORTED, 422)
+    kind = path.strip("/").split("/", 1)[0].lower()
+    return f"https://{host}/{kind}/{match.group(1)}"
 
 
 def _path_allowed(provider: str, host: str, path: str) -> bool:

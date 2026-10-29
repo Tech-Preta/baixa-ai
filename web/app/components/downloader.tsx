@@ -25,7 +25,7 @@ export function Downloader() {
     if (!trimmed) {
       setMedia(null);
       setStatus("error");
-      setError("Cole um link do Instagram, do TikTok ou do X.");
+      setError("Cole um link do Instagram, do TikTok, do X ou do YouTube.");
       return;
     }
 
@@ -46,9 +46,12 @@ export function Downloader() {
   const showThumb = Boolean(thumb) && hiddenThumb !== thumb;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <form onSubmit={onSubmit} aria-busy={status === "loading"} className="flex flex-col gap-3">
-        <label htmlFor="media-url" className="text-sm font-medium text-ink">
+        <label
+          htmlFor="media-url"
+          className="font-mono text-[11px] tracking-[0.16em] text-muted uppercase"
+        >
           Link da publicação
         </label>
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -61,73 +64,73 @@ export function Downloader() {
             autoComplete="off"
             spellCheck={false}
             required
-            placeholder="https://www.instagram.com/reel/…"
+            placeholder="https://www.youtube.com/watch?v=…"
             value={url}
             aria-invalid={status === "error"}
             onChange={(event) => setUrl(event.target.value)}
-            className="min-h-12 w-full flex-1 rounded-2xl border border-line bg-card px-4 text-base text-ink shadow-[3px_3px_0_#1c1915] outline-none placeholder:text-muted/80"
+            className="h-12 w-full flex-1 rounded-md border border-border bg-background px-3 text-base text-foreground placeholder:text-muted"
           />
           <button
             type="submit"
             data-testid="submit"
             disabled={status === "loading"}
-            className="min-h-12 rounded-2xl bg-pine px-6 text-base font-semibold text-white shadow-[3px_3px_0_#1c1915] transition-transform enabled:hover:-translate-y-0.5 enabled:active:translate-y-0 disabled:cursor-wait disabled:opacity-70"
+            className="h-12 rounded-md bg-foreground px-5 text-sm font-medium text-background hover:opacity-80 disabled:cursor-wait disabled:opacity-50"
           >
             {status === "loading" ? "Buscando…" : "Buscar"}
           </button>
         </div>
         <p className="text-sm leading-6 text-muted">
-          Post e Reel do Instagram, Story público, vídeo do TikTok ou post com mídia no X.
+          Post, Reel ou Story público, vídeo do TikTok, post do X, ou um vídeo único do YouTube.
+          Vídeos também podem ser baixados em MP3.
         </p>
       </form>
 
-      <div aria-live="polite" className="min-h-16">
+      <div aria-live="polite">
         {status === "loading" ? <p className="text-sm text-muted">Buscando a mídia…</p> : null}
         {status === "error" && error ? (
           <p
             role="alert"
             data-testid="error"
-            className="rounded-2xl border border-danger/30 bg-white px-4 py-3 text-sm leading-6 text-danger"
+            className="rounded-md border border-danger/40 px-3 py-3 text-sm leading-6 text-danger"
           >
             {error}
           </p>
         ) : null}
         {status === "ready" && media ? (
-          <article
-            data-testid="preview"
-            className="overflow-hidden rounded-3xl border border-line bg-card shadow-[6px_6px_0_#1c1915]"
-          >
+          <article data-testid="preview" className="overflow-hidden rounded-md border border-border bg-background">
             {showThumb && thumb ? (
               // The API already proxies the preview. Skipping the image optimizer avoids a second hop.
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={absoluteApiPath(thumb)}
                 alt={media.title ? `Prévia de ${media.title}` : "Prévia da mídia"}
-                className="aspect-video w-full bg-paper object-cover"
+                className="aspect-video w-full bg-hover object-cover"
                 onError={() => setHiddenThumb(thumb)}
               />
             ) : null}
-            <div className="flex flex-col gap-4 p-5">
-              <div className="flex flex-col gap-1">
-                <p className="text-xs font-semibold tracking-[0.14em] text-pine uppercase">
+            <div className="flex flex-col gap-5 p-5">
+              <div className="flex flex-col gap-2">
+                <p className="font-mono text-[11px] tracking-[0.16em] text-muted uppercase">
                   {providerLabel(media.provider)}
                 </p>
-                <h2 className="font-display text-2xl leading-tight text-ink">
+                <h2 className="text-2xl font-semibold tracking-tight">
                   {media.title || "Mídia pública"}
                 </h2>
                 {media.author ? <p className="text-sm text-muted">{media.author}</p> : null}
               </div>
               <ul className="flex flex-col gap-2">
                 {media.items.map((item) => (
-                  <li key={`${item.index}-${item.label}-${item.ext}`}>
+                  <li key={item.download_path}>
                     <a
-                      data-testid="download-link"
+                      data-testid={item.ext === "mp3" ? "download-mp3" : "download-link"}
                       href={absoluteApiPath(item.download_path)}
-                      className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-ink/15 bg-white px-4 py-3 text-sm font-semibold text-ink hover:border-pine hover:text-pine"
+                      className="flex min-h-12 items-center justify-between gap-3 rounded-md border border-border px-3 py-3 text-sm font-medium hover:bg-hover"
                     >
                       <span>{downloadLabel(item.label)}</span>
                       {item.filesize ? (
-                        <span className="font-normal text-muted">{formatBytes(item.filesize)}</span>
+                        <span className="font-mono text-xs font-normal text-muted">
+                          {formatBytes(item.filesize)}
+                        </span>
                       ) : null}
                     </a>
                   </li>
